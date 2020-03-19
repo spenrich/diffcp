@@ -1,22 +1,20 @@
-import warnings
-
-import diffcp.cones as cone_lib
+"""TODO: docstring."""
 
 import numpy as np
 import scipy.sparse as sparse
-import scipy.sparse.linalg as splinalg
 import scs
+import warnings
 from threadpoolctl import threadpool_limits
-
 import multiprocessing as mp
 from multiprocessing.pool import ThreadPool
-
+import diffcp.cones as cone_lib
 import _diffcp
 
-def pi(z, cones):
-    """Projection onto R^n x K^* x R_+
 
-    `cones` represents a convex cone K, and K^* is its dual cone.
+def pi(z, cones):
+    """Project onto R^n x K^* x R_+.
+
+    Argument `cones` represents a convex cone K, and K^* is its dual cone.
     """
     u, v, w = z
     return np.concatenate(
@@ -24,14 +22,16 @@ def pi(z, cones):
 
 
 def solve_and_derivative_wrapper(A, b, c, cone_dict, warm_start, mode, kwargs):
-    """A wrapper around solve_and_derivative for the batch function."""
+    """Wrap `solve_and_derivative` for the batch function."""
     return solve_and_derivative(
         A, b, c, cone_dict, warm_start=warm_start, mode=mode, **kwargs)
 
 
-def solve_and_derivative_batch(As, bs, cs, cone_dicts, n_jobs_forward=-1, n_jobs_backward=-1,
+def solve_and_derivative_batch(As, bs, cs, cone_dicts,
+                               n_jobs_forward=-1, n_jobs_backward=-1,
                                mode="lsqr", warm_starts=None, **kwargs):
-    """
+    """Solve a batch of cone programs, and compute their derivatives.
+
     Solves a batch of cone programs and returns a function that
     performs a batch of derivatives. Uses a ThreadPool to perform
     operations across the batch in parallel.
@@ -44,10 +44,12 @@ def solve_and_derivative_batch(As, bs, cs, cone_dicts, n_jobs_forward=-1, n_jobs
         bs - A list of b arrays.
         cs - A list of c arrays.
         cone_dicts - A list of dictionaries describing the cone.
-        n_jobs_forward - Number of jobs to use in the forward pass. n_jobs_forward = 1
-            means serial and n_jobs_forward = -1 defaults to the number of CPUs (default=-1).
-        n_jobs_backward - Number of jobs to use in the backward pass. n_jobs_backward = 1
-            means serial and n_jobs_backward = -1 defaults to the number of CPUs (default=-1).
+        n_jobs_forward - Number of jobs to use in the forward pass.
+            `n_jobs_forward = 1` means serial and `n_jobs_forward = -1`
+            defaults to the number of CPUs (default=-1).
+        n_jobs_backward - Number of jobs to use in the backward pass.
+            `n_jobs_backward = 1` means serial and `n_jobs_backward = -1`
+            defaults to the number of CPUs (default=-1).
         mode - Differentiation mode in ["lsqr", "dense"].
         warm_starts - A list of warm starts.
         kwargs - kwargs sent to scs.
@@ -57,11 +59,13 @@ def solve_and_derivative_batch(As, bs, cs, cone_dicts, n_jobs_forward=-1, n_jobs
         ys: A list of y arrays.
         ss: A list of s arrays.
         D_batch: A callable with signature
-                D_batch(dAs, dbs, dcs) -> dxs, dys, dss
-            This callable maps lists of problem data derivatives to lists of solution derivatives.
+            `D_batch(dAs, dbs, dcs) -> dxs, dys, dss`.
+            This callable maps lists of problem data derivatives to lists of
+            solution derivatives.
         DT_batch: A callable with signature
-                DT_batch(dxs, dys, dss) -> dAs, dbs, dcs
-            This callable maps lists of solution derivatives to lists of problem data derivatives.
+            `DT_batch(dxs, dys, dss) -> dAs, dbs, dcs`.
+            This callable maps lists of solution derivatives to lists of
+            problem data derivatives.
     """
     batch_size = len(As)
     if warm_starts is None:
@@ -78,7 +82,9 @@ def solve_and_derivative_batch(As, bs, cs, cone_dicts, n_jobs_forward=-1, n_jobs
         xs, ys, ss, Ds, DTs = [], [], [], [], []
         for i in range(batch_size):
             x, y, s, D, DT = solve_and_derivative(As[i], bs[i], cs[i],
-                    cone_dicts[i], warm_starts[i], mode=mode, **kwargs)
+                                                  cone_dicts[i],
+                                                  warm_starts[i],
+                                                  mode=mode, **kwargs)
             xs += [x]
             ys += [y]
             ss += [s]
@@ -87,8 +93,9 @@ def solve_and_derivative_batch(As, bs, cs, cone_dicts, n_jobs_forward=-1, n_jobs
     else:
         # thread pool
         pool = ThreadPool(processes=n_jobs_forward)
-        args = [(A, b, c, cone_dict, warm_start, mode, kwargs) for A, b, c, cone_dict, warm_start in \
-                    zip(As, bs, cs, cone_dicts, warm_starts)]
+        args = [(A, b, c, cone_dict, warm_start, mode, kwargs)
+                for A, b, c, cone_dict, warm_start in
+                zip(As, bs, cs, cone_dicts, warm_starts)]
         with threadpool_limits(limits=1):
             results = pool.starmap(solve_and_derivative_wrapper, args)
         pool.close()
@@ -107,7 +114,7 @@ def solve_and_derivative_batch(As, bs, cs, cone_dicts, n_jobs_forward=-1, n_jobs
                 dys += [dy]
                 dss += [ds]
             return dxs, dys, dss
-        
+
         def DT_batch(dxs, dys, dss, **kwargs):
             dAs, dbs, dcs = [], [], []
             for i in range(batch_size):
@@ -120,8 +127,10 @@ def solve_and_derivative_batch(As, bs, cs, cone_dicts, n_jobs_forward=-1, n_jobs
 
         def D_batch(dAs, dbs, dcs, **kwargs):
             pool = ThreadPool(processes=n_jobs_backward)
+
             def Di(i):
                 return Ds[i](dAs[i], dbs[i], dcs[i], **kwargs)
+
             results = pool.map(Di, range(batch_size))
             pool.close()
             dxs = [r[0] for r in results]
@@ -131,8 +140,10 @@ def solve_and_derivative_batch(As, bs, cs, cone_dicts, n_jobs_forward=-1, n_jobs
 
         def DT_batch(dxs, dys, dss, **kwargs):
             pool = ThreadPool(processes=n_jobs_backward)
+
             def DTi(i):
                 return DTs[i](dxs[i], dys[i], dss[i], **kwargs)
+
             results = pool.map(DTi, range(batch_size))
             pool.close()
             dAs = [r[0] for r in results]
@@ -144,11 +155,14 @@ def solve_and_derivative_batch(As, bs, cs, cone_dicts, n_jobs_forward=-1, n_jobs
 
 
 class SolverError(Exception):
+    """TODO: docstring."""
+
     pass
 
 
-def solve_and_derivative(A, b, c, cone_dict, warm_start=None, mode='lsqr', **kwargs):
-    """Solves a cone program, returns its derivative as an abstract linear map.
+def solve_and_derivative(A, b, c, cone_dict, warm_start=None, mode='lsqr',
+                         **kwargs):
+    r"""Solve a cone program, return its derivative as an abstract linear map.
 
     This function solves a convex cone program, with primal-dual problems
         min.        c^T x                  min.        b^Ty
@@ -220,10 +234,11 @@ def solve_and_derivative(A, b, c, cone_dict, warm_start=None, mode='lsqr', **kwa
 
 def solve_and_derivative_internal(A, b, c, cone_dict, warm_start=None,
                                   mode='lsqr', raise_on_error=True, **kwargs):
+    """TODO: docstring."""
     if mode not in ["dense", "lsqr"]:
         raise ValueError("Unsupported mode {}; the supported modes are "
                          "'dense' and 'lsqr'".format(mode))
-    
+
     if np.isnan(A.data).any():
         raise RuntimeError("Found a NaN in A.")
 
@@ -275,7 +290,7 @@ def solve_and_derivative_internal(A, b, c, cone_dict, warm_start=None,
 
     # pre-compute quantities for the derivative
     m, n = A.shape
-    N = m + n + 1
+    # N = m + n + 1
     cones = cone_lib.parse_cone_dict(cone_dict)
     cones_parsed = cone_lib.parse_cone_dict_cpp(cones)
     z = (x, y - s, np.array([1]))
@@ -299,7 +314,8 @@ def solve_and_derivative_internal(A, b, c, cone_dict, warm_start=None,
     pi_z = pi(z, cones)
 
     def derivative(dA, db, dc, **kwargs):
-        """Applies derivative at (A, b, c) to perturbations dA, db, dc
+        """Apply derivative at (A, b, c) to perturbations dA, db, dc.
+
         Args:
             dA: SciPy sparse matrix in CSC format; must have same sparsity
                 pattern as the matrix `A` from the cone program
@@ -329,7 +345,8 @@ def solve_and_derivative_internal(A, b, c, cone_dict, warm_start=None,
         return -dx, -dy, -ds
 
     def adjoint_derivative(dx, dy, ds, **kwargs):
-        """Applies adjoint of derivative at (A, b, c) to perturbations dx, dy, ds
+        """Apply adjoint derivative at (A, b, c) to perturbations dx, dy, ds.
+
         Args:
             dx: NumPy array representing perturbation in `x`
             dy: NumPy array representing perturbation in `y`

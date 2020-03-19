@@ -1,9 +1,8 @@
+"""TODO: docstring."""
+
 import numpy as np
 import scipy.sparse as sparse
-import scipy.sparse.linalg as splinalg
-import warnings
-
-from _diffcp import dprojection, project_exp_cone, Cone, ConeType
+from _diffcp import project_exp_cone, Cone, ConeType
 
 ZERO = "f"
 POS = "l"
@@ -27,23 +26,28 @@ CONE_MAP = {
 
 
 def parse_cone_dict_cpp(cone_list):
-    return [Cone(CONE_MAP[cone], [l] if not isinstance(l, (list, tuple)) else l)
-            for cone, l in cone_list]
+    """TODO: docstring."""
+    return [Cone(CONE_MAP[cone], [l] if not isinstance(l, (list, tuple))
+            else l) for cone, l in cone_list]
+
 
 def parse_cone_dict(cone_dict):
-    """Parses SCS-style cone dictionary."""
+    """Parse an SCS-style cone dictionary."""
     return [(cone, cone_dict[cone]) for cone in CONES if cone in cone_dict]
 
+
 def vec_psd_dim(dim):
+    """TODO: docstring."""
     return int(dim * (dim + 1) / 2)
 
 
 def psd_dim(size):
+    """TODO: docstring."""
     return int(np.sqrt(2 * size))
 
 
 def unvec_symm(x, dim):
-    """Returns a dim-by-dim symmetric matrix corresponding to `x`.
+    """Return a dim-by-dim symmetric matrix corresponding to `x`.
 
     `x` is a vector of length dim*(dim + 1)/2, corresponding to a symmetric
     matrix; the correspondence is as in SCS.
@@ -65,7 +69,7 @@ def unvec_symm(x, dim):
 
 
 def vec_symm(X):
-    """Returns a vectorized representation of a symmetric matrix `X`.
+    """Return a vectorized representation of a symmetric matrix `X`.
 
     Vectorization (including scaling) as per SCS.
     vec(X) = (X11, sqrt(2)*X21, ..., sqrt(2)*Xk1, X22, sqrt(2)*X32, ..., Xkk)
@@ -78,7 +82,7 @@ def vec_symm(X):
 
 
 def _proj(x, cone, dual=False):
-    """Returns the projection of x onto a cone or its dual cone."""
+    """Return the projection of x onto a cone or its dual cone."""
     if cone == EXP_DUAL:
         cone = EXP
         dual = not dual
@@ -110,7 +114,7 @@ def _proj(x, cone, dual=False):
             x_i = x[offset:offset + 3]
             if dual:
                 x_i = x_i * -1
-            out[offset:offset + 3] = project_exp_cone(x_i);
+            out[offset:offset + 3] = project_exp_cone(x_i)
             offset += 3
         # via Moreau: Pi_K*(x) = x + Pi_K(-x)
         return x + out if dual else out
@@ -119,7 +123,8 @@ def _proj(x, cone, dual=False):
 
 
 def pi(x, cones, dual=False):
-    """Projects x onto product of cones (or their duals)
+    """Project `x` onto product of cones (or their duals).
+
     Args:
         x: NumPy array (with PSD data formatted in SCS convention)
         cones: list of (cone name, size)
